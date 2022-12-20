@@ -1,0 +1,165 @@
+SELECT *
+FROM [PortfolioProject].[dbo].[CovidVaccinations]
+ORDER BY 1
+    , 2
+
+SELECT *
+FROM [PortfolioProject].[dbo].[CovidDeaths]
+ORDER BY 3
+    , 4
+
+SELECT location
+    , DATE
+    , total_cases
+    , new_cases
+    , total_deaths
+    , population
+FROM [PortfolioProject].[dbo].[CovidDeaths]
+ORDER BY 1
+    , 2
+
+-- Total cases vs Total deaths: shows likelihood of dying if you contract covid in Nigeria
+SELECT location
+    , DATE
+    , total_cases
+    , total_deaths
+    , (total_deaths / total_cases) * 100 AS DeathPercentage
+FROM [PortfolioProject].[dbo].[CovidDeaths]
+WHERE [location] LIKE '%nigeria%'
+ORDER BY 1
+    , 2
+
+-- Total cases vs Population: shows what percentage of population in Nigeria has got covid
+SELECT location
+    , DATE
+    , total_cases
+    , population
+    , (total_cases / population) * 100 AS PopulationPercentage
+FROM [PortfolioProject].[dbo].[CovidDeaths]
+WHERE [location] LIKE '%nigeria%'
+ORDER BY 1
+    , 2
+
+-- Total cases vs Population: countries with highest infection rate compared to population
+SELECT location
+    , population
+    , MAX(total_cases) AS HighestInfectionCount
+    , Max((total_cases) / population) * 100 AS PopulationInfected
+FROM [PortfolioProject].[dbo].[CovidDeaths]
+GROUP BY [location]
+    , [population]
+ORDER BY 1
+    , 2
+
+-- Countries with highest death count compared to population
+SELECT location
+    , MAX(cast(total_deaths AS INT)) AS TotalDeathCount
+FROM [PortfolioProject].[dbo].[CovidDeaths]
+WHERE [continent] IS NOT NULL
+GROUP BY [location]
+ORDER BY TotalDeathCount DESC
+
+-- Showing continents with the highest amount
+SELECT DATE
+    , sum(new_cases) AS total_cases
+    , SUM(cast(new_deaths AS INT)) AS total_deaths
+    , SUM(cast(new_deaths AS INT)) / SUM(new_cases) * 100 AS DeathPercentage
+FROM [PortfolioProject].[dbo].[CovidDeaths]
+WHERE [continent] IS NULL
+GROUP BY [date]
+ORDER BY 1
+    , 2
+
+-- Total population vs vaccination
+SELECT dea.continent
+    , dea.[location]
+    , dea.[date]
+    , dea.population
+    , vac.new_vaccinations
+    , SUM(convert(INT, vac.new_vaccinations)) OVER (
+        PARTITION BY dea.location
+        , dea.DATE
+        ) AS RollingPeopleVaccinated
+FROM [PortfolioProject].[dbo].[CovidDeaths] dea
+JOIN [PortfolioProject].[dbo].[CovidVaccinations] vac
+    ON dea.[location] = vac.[location]
+        AND dea.[date] = vac.[date]
+WHERE dea.continent IS NOT NULL
+ORDER BY 2
+    , 3
+
+--  CTE
+WITH PopvsVac(continent, location, DATE, population, new_vaccinations, RollingPeopleVaccinated) AS (
+        SELECT dea.continent
+            , dea.[location]
+            , dea.[date]
+            , dea.population
+            , vac.new_vaccinations
+            , SUM(convert(INT, vac.new_vaccinations)) OVER (
+                PARTITION BY dea.location
+                , dea.DATE
+                ) AS RollingPeopleVaccinated
+        FROM [PortfolioProject].[dbo].[CovidDeaths] dea
+        JOIN [PortfolioProject].[dbo].[CovidVaccinations] vac
+            ON dea.[location] = vac.[location]
+                AND dea.[date] = vac.[date]
+        WHERE dea.continent IS NOT NULL
+        )
+
+SELECT *
+    , (RollingPeopleVaccinated / population) * 100
+FROM PopvsVac
+
+-- TEMP TABLE
+DROP TABLE
+
+IF EXISTS #PercentPopulationVaccinated
+    CREATE TABLE #PercentPopulationVaccinated (
+        Continent NVARCHAR(255)
+        , LOCATION NVARCHAR(255)
+        , DATE DATETIME
+        , population INT
+        , new_vaccinations INT
+        , RollingPeopleVaccinated INT
+        )
+
+INSERT INTO #PercentPopulationVaccinated
+SELECT dea.continent
+    , dea.[location]
+    , dea.[date]
+    , dea.population
+    , vac.new_vaccinations
+    , SUM(convert(INT, vac.new_vaccinations)) OVER (
+        PARTITION BY dea.location
+        , dea.DATE
+        ) AS RollingPeopleVaccinated
+FROM [PortfolioProject].[dbo].[CovidDeaths] dea
+JOIN [PortfolioProject].[dbo].[CovidVaccinations] vac
+    ON dea.[location] = vac.[location]
+        AND dea.[date] = vac.[date]
+WHERE dea.continent IS NOT NULL
+
+SELECT *
+    , (RollingPeopleVaccinated / population) * 100
+FROM #PercentPopulationVaccinated
+
+-- Create View to store data for visualizations
+CREATE VIEW PercentPopulationVaccinated
+AS
+SELECT dea.continent
+    , dea.[location]
+    , dea.[date]
+    , dea.population
+    , vac.new_vaccinations
+    , SUM(convert(INT, vac.new_vaccinations)) OVER (
+        PARTITION BY dea.location
+        , dea.DATE
+        ) AS RollingPeopleVaccinated
+FROM [PortfolioProject].[dbo].[CovidDeaths] dea
+JOIN [PortfolioProject].[dbo].[CovidVaccinations] vac
+    ON dea.[location] = vac.[location]
+        AND dea.[date] = vac.[date]
+WHERE dea.continent IS NOT NULL
+
+SELECT *
+FROM #PercentPopulationVaccinated
